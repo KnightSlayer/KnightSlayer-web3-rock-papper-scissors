@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 contract RockPaperScissors {
-    enum Figure { NONE, ROCK, PAPER, SCISSORS }
     enum GameStatus { OFFER, REVOKED, DECLINED, MOVES, REVEALING, FINISHED, TIMEOUT }
     event Offer(address player1, address player2, uint bet);
     uint nextGameId = 1;
@@ -27,8 +26,10 @@ contract RockPaperScissors {
         uint id;
         address player1; // initiator (offer maker)
         address player2;
-        Figure player1Figure;
-        Figure player2Figure;
+        string player1Move;
+        string player2Move;
+        uint player1Secret;
+        uint player2Secret;
         uint bet;
         GameStatus status;
         uint updatedAt;
@@ -49,6 +50,14 @@ contract RockPaperScissors {
         return size > 0;
     }
 
+    function isSameStrings(string _str1, string _str2) private pure returns (bool) {
+        return keccak256(abi.encodePacked(_str1)) == keccak256(abi.encodePacked(_str2));
+    }
+
+    function isEmptyStrings(string _str) private pure returns (bool) {
+        return isSameStrings(_str, '');
+    }
+
     function makeOffer(address _opponent) external payable noSmartContract {
         require(nextGameId != 0, "This contract reached maximum games count. Fork this contract for new games"); // overflow happen
         require(!isContract(_opponent), "You can't challenge smart contract address");
@@ -58,8 +67,10 @@ contract RockPaperScissors {
             gameId, // id
             msg.sender, // player 1
             _opponent,  // player 2
-            Figure.NONE,  // player 1's move
-            Figure.NONE, // player 2's move
+            '',  // player 1's move
+            '', // player 2's move
+            0,
+            0,
             msg.value, // bet
             GameStatus.OFFER, // status
             now, // updatedAt
@@ -89,5 +100,23 @@ contract RockPaperScissors {
         require(game.player2 == msg.sender, 'Only opponent can accept the offer');
         require(game.bet == msg.value, 'You should provide the same amount of ether');
         game.status = GameStatus.MOVES;
+    }
+
+    // do we need `memory` for move?
+    function makeMove(uint _gameId, string memory move) external forStatus(GameStatus.MOVES) markUpdate(_gameId) {
+        Game memory game = games[msg.sender][_gameId];
+        require(msg.sender == game.player1 || msg.sender == game.player2, 'Only players can make a move');
+
+        if (msg.sender == game.player1) {
+            game.player1Move = move;
+            if (!isEmptyStrings(game.player2Move)) {
+                game.status = GameStatus.REVEALING;
+            }
+        } else {
+            game.player2Move = move;
+            if (!isEmptyStrings(game.player1Move)) {
+                game.status = GameStatus.REVEALING;
+            }
+        }
     }
 }
