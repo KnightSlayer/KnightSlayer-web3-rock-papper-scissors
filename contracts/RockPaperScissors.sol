@@ -83,4 +83,11 @@ contract RockPaperScissors {
         game.status = GameStatus.DECLINED;
         game.player1.transfer(game.bet);
     }
+
+    function acceptOffer(uint _gameId) external payable forStatus(GameStatus.OFFER) markUpdate(_gameId) {
+        Game memory game = games[msg.sender][_gameId];
+        require(game.player2 == msg.sender, 'Only opponent can accept the offer');
+        require(game.bet == msg.value, 'You should provide the same amount of ether');
+        game.status = GameStatus.MOVES;
+    }
 }
