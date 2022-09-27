@@ -143,4 +143,20 @@ contract RockPaperScissors {
         game.player1.addr.transfer(game.bet);
         game.player2.addr.transfer(game.bet);
     }
+
+    function revealSecret(uint _secret, uint _gameId) external onlyPlayerOnStatus(GameStatus.REVEALING, _gameId) {
+        Game memory game = games[msg.sender][_gameId];
+        if (msg.sender == game.player1.addr) {
+            game.player1.secret = _secret;
+            if (game.player2.secret > 0) {
+                game.status = GameStatus.FINISHED;
+            }
+        } else {
+            game.player2.secret = _secret;
+            if (game.player1.secret > 0) {
+                game.status = GameStatus.FINISHED;
+            }
+        }
+
+    }
 }
