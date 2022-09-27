@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 contract RockPaperScissors {
-    enum GameStatus { OFFER, REVOKED, DECLINED, MOVES, REVEALING, FINISHED, TIMEOUT }
+    enum GameStatus { OFFER, REVOKED, DECLINED, MOVES, CANCELED, REVEALING, FINISHED, TIMEOUT }
     event Offer(address player1, address player2, uint bet);
     uint nextGameId = 1;
 
@@ -17,8 +17,15 @@ contract RockPaperScissors {
         game.updatedAt = now;
     }
 
-    modifier forStatus(GameStatus _status, gameId) {
-        require(msg.sender != tx.origin);
+    modifier forStatus(GameStatus _status, uint _gameId) {
+        Game memory game = games[msg.sender][_gameId];
+        require(game.status == _status);
+        _;
+    }
+
+    modifier onlyPlayer(uint _gameId) {
+        Game memory game = games[msg.sender][_gameId];
+        require(msg.sender == game.player1.addr || msg.sender == game.player2.addr, 'Only players can make a move');
         _;
     }
 
@@ -82,21 +89,21 @@ contract RockPaperScissors {
         games[player2.addr][gameId] = newGame;
     }
 
-    function revokeOffer(uint _gameId) external forStatus(GameStatus.OFFER) markUpdate(_gameId) {
+    function revokeOffer(uint _gameId) external forStatus(GameStatus.OFFER, _gameId) markUpdate(_gameId) {
         Game memory game = games[msg.sender][_gameId];
         require(game.player1.addr == msg.sender, 'Only offer maker can revoke the offer');
         game.status = GameStatus.REVOKED;
         game.player1.addr.transfer(game.bet);
     }
 
-    function declineOffer(uint _gameId) external forStatus(GameStatus.OFFER) markUpdate(_gameId) {
+    function declineOffer(uint _gameId) external forStatus(GameStatus.OFFER, _gameId) markUpdate(_gameId) {
         Game memory game = games[msg.sender][_gameId];
         require(game.player2.addr == msg.sender, 'Only opponent can decline the offer');
         game.status = GameStatus.DECLINED;
         game.player1.addr.transfer(game.bet);
     }
 
-    function acceptOffer(uint _gameId) external payable forStatus(GameStatus.OFFER) markUpdate(_gameId) {
+    function acceptOffer(uint _gameId) external payable forStatus(GameStatus.OFFER, _gameId) markUpdate(_gameId) {
         Game memory game = games[msg.sender][_gameId];
         require(game.player2.addr == msg.sender, 'Only opponent can accept the offer');
         require(game.bet == msg.value, 'You should provide the same amount of ether');
@@ -104,9 +111,8 @@ contract RockPaperScissors {
     }
 
     // do we need `memory` for move?
-    function makeMove(uint _gameId, string memory move) external forStatus(GameStatus.MOVES) markUpdate(_gameId) {
+    function makeMove(uint _gameId, string memory move) external forStatus(GameStatus.MOVES, _gameId) markUpdate(_gameId) onlyPlayer(_gameId) {
         Game memory game = games[msg.sender][_gameId];
-        require(msg.sender == game.player1.addr || msg.sender == game.player2.addr, 'Only players can make a move');
         require(!isEmptyStrings(move), "Move can't be empty");
 
         if (msg.sender == game.player1.addr) {
@@ -120,5 +126,13 @@ contract RockPaperScissors {
                 game.status = GameStatus.REVEALING;
             }
         }
+    }
+
+    function cancelForSlowMove(uint _gameId) external forStatus(GameStatus.MOVES, _gameId) markUpdate(_gameId) onlyPlayer(_gameId) {
+        Game memory game = games[msg.sender][_gameId];
+        require(game.updatedAt + 5 minutes > now, 'You cant abort game so fast');
+        game.status = GameStatus.CANCELED;
+        game.player1.addr.transfer(game.bet);
+        game.player2.addr.transfer(game.bet);
     }
 }
