@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.17;
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract RockPaperScissors {
     enum GameStatus { OFFER, REVOKED, DECLINED, MOVES, CANCELED, REVEALING, FINISHED, TIMEOUT }
@@ -14,7 +15,7 @@ contract RockPaperScissors {
     modifier markUpdate(uint _gameId) {
         _;
         Game memory game = games[msg.sender][_gameId];
-        game.updatedAt = now;
+        game.updatedAt = block.timestamp;
     }
 
     modifier forStatus(GameStatus _status, uint _gameId) {
@@ -34,11 +35,11 @@ contract RockPaperScissors {
         require(game.status == _status);
         require(msg.sender == game.player1.addr || msg.sender == game.player2.addr, 'Only players can make a move');
         _;
-        game.updatedAt = now;
+        game.updatedAt = block.timestamp;
     }
 
     struct Player {
-        address addr;
+        address payable addr;
         string move;
         uint secret;
     }
@@ -56,41 +57,50 @@ contract RockPaperScissors {
     // playerAddress -> gameId -> gameState
     mapping (address => mapping(uint => Game)) games;
 
-    function getAllGamesOf(address _address) external {
-        return userGames[_address];
-    }
-
     // https://stackoverflow.com/a/40939341
-    function isContract(address _address) private returns (bool) {
+    function isContract(address _address) private view returns (bool) {
         uint size;
         assembly { size := extcodesize(_address) }
         return size > 0;
     }
 
-    function isSameStrings(string _str1, string _str2) private pure returns (bool) {
+    function isSameStrings(string memory _str1, string memory  _str2) private pure returns (bool) {
         return keccak256(abi.encodePacked(_str1)) == keccak256(abi.encodePacked(_str2));
     }
 
-    function isEmptyStrings(string _str) private pure returns (bool) {
+    function isEmptyStrings(string memory  _str) private pure returns (bool) {
         return isSameStrings(_str, '');
     }
 
-    function makeOffer(address _opponent) external payable noSmartContract {
+    function getMove(string memory _figure, uint _secret) private pure returns (string memory) {
+        string memory secretAsString = Strings.toString(_secret);
+        string memory fullMove = string.concat(_figure, secretAsString);
+        return string(abi.encodePacked(keccak256(abi.encodePacked(fullMove))));
+    }
+
+    function isCorrectMove(string memory _move, uint _secret) private pure returns (bool) {
+        string memory rockMove = getMove("Rock", _secret);
+        string memory paperMove = getMove("Paper", _secret);
+        string memory scissorsMove = getMove("Scissors", _secret);
+        return isSameStrings(rockMove, _move) || isSameStrings(paperMove, _move) || isSameStrings(scissorsMove, _move);
+    }
+
+    function makeOffer(address payable _opponent) external payable noSmartContract {
         require(nextGameId != 0, "This contract reached maximum games count. Fork this contract for new games"); // overflow happen
         require(!isContract(_opponent), "You can't challenge smart contract address");
         uint gameId = nextGameId;
         nextGameId++;
 
-        Player player1 = Player(msg.sender, '', 0);
-        Player player2 = Player(_opponent, '', 0);
+        Player memory player1 = Player(payable(msg.sender), '', 0);
+        Player memory player2 = Player(_opponent, '', 0);
         Game memory newGame = Game(
             gameId, // id
             player1,
             player2,
             msg.value, // bet
             GameStatus.OFFER, // status
-            now, // updatedAt
-            now // createdAt
+            block.timestamp, // updatedAt
+            block.timestamp // createdAt
         );
 
         games[player1.addr][gameId] = newGame;
@@ -138,7 +148,7 @@ contract RockPaperScissors {
 
     function cancelForSlowMove(uint _gameId) external onlyPlayerOnStatus(GameStatus.MOVES, _gameId) {
         Game memory game = games[msg.sender][_gameId];
-        require(game.updatedAt + 5 minutes > now, 'You cant abort game so fast');
+        require(game.updatedAt + 5 minutes > block.timestamp, 'You cant abort game so fast');
         game.status = GameStatus.CANCELED;
         game.player1.addr.transfer(game.bet);
         game.player2.addr.transfer(game.bet);
@@ -147,16 +157,24 @@ contract RockPaperScissors {
     function revealSecret(uint _secret, uint _gameId) external onlyPlayerOnStatus(GameStatus.REVEALING, _gameId) {
         Game memory game = games[msg.sender][_gameId];
         if (msg.sender == game.player1.addr) {
+            require(isCorrectMove(game.player1.move, _secret), "incorrect move");
             game.player1.secret = _secret;
             if (game.player2.secret > 0) {
                 game.status = GameStatus.FINISHED;
             }
         } else {
+            require(isCorrectMove(game.player2.move, _secret), "incorrect move");
             game.player2.secret = _secret;
             if (game.player1.secret > 0) {
                 game.status = GameStatus.FINISHED;
             }
         }
+    }
 
+    function forceFinish(uint _gameId) external onlyPlayerOnStatus(GameStatus.REVEALING, _gameId) {
+        Game memory game = games[msg.sender][_gameId];
+        require(game.player1.secret > 0  || game.player2.secret > 0);
+        require(game.updatedAt + 1 hours > block.timestamp, 'You cant force game finish so fast');
+        game.status = GameStatus.TIMEOUT;
     }
 }
