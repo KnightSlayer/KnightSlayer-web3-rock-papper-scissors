@@ -4,7 +4,9 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract RockPaperScissors {
     enum GameStatus { OFFER, REVOKED, DECLINED, MOVES, CANCELED, REVEALING, FINISHED, TIMEOUT }
+
     event Offer(address player1, address player2, uint bet);
+
     uint nextGameId = 1;
 
     modifier noSmartContract() {
@@ -12,26 +14,8 @@ contract RockPaperScissors {
         _;
     }
 
-    modifier markUpdate(uint _gameId) {
-        _;
-        Game memory game = games[msg.sender][_gameId];
-        game.updatedAt = block.timestamp;
-    }
-
-    modifier forStatus(GameStatus _status, uint _gameId) {
-        Game memory game = games[msg.sender][_gameId];
-        require(game.status == _status);
-        _;
-    }
-
-    modifier onlyPlayer(uint _gameId) {
-        Game memory game = games[msg.sender][_gameId];
-        require(msg.sender == game.player1.addr || msg.sender == game.player2.addr, 'Only players can make a move');
-        _;
-    }
-
     modifier onlyPlayerOnStatus(GameStatus _status, uint _gameId) {
-        Game memory game = games[msg.sender][_gameId];
+        Game storage game = games[msg.sender][_gameId];
         require(game.status == _status);
         require(msg.sender == game.player1.addr || msg.sender == game.player2.addr, 'Only players can make a move');
         _;
@@ -108,21 +92,21 @@ contract RockPaperScissors {
     }
 
     function revokeOffer(uint _gameId) external onlyPlayerOnStatus(GameStatus.OFFER, _gameId){
-        Game memory game = games[msg.sender][_gameId];
+        Game storage game = games[msg.sender][_gameId];
         require(game.player1.addr == msg.sender, 'Only offer maker can revoke the offer');
         game.status = GameStatus.REVOKED;
         game.player1.addr.transfer(game.bet);
     }
 
     function declineOffer(uint _gameId) external onlyPlayerOnStatus(GameStatus.OFFER, _gameId) {
-        Game memory game = games[msg.sender][_gameId];
+        Game storage game = games[msg.sender][_gameId];
         require(game.player2.addr == msg.sender, 'Only opponent can decline the offer');
         game.status = GameStatus.DECLINED;
         game.player1.addr.transfer(game.bet);
     }
 
     function acceptOffer(uint _gameId) external payable onlyPlayerOnStatus(GameStatus.OFFER, _gameId) {
-        Game memory game = games[msg.sender][_gameId];
+        Game storage game = games[msg.sender][_gameId];
         require(game.player2.addr == msg.sender, 'Only opponent can accept the offer');
         require(game.bet == msg.value, 'You should provide the same amount of ether');
         game.status = GameStatus.MOVES;
@@ -130,7 +114,7 @@ contract RockPaperScissors {
 
     // do we need `memory` for move?
     function makeMove(uint _gameId, string memory move) external onlyPlayerOnStatus(GameStatus.MOVES, _gameId) {
-        Game memory game = games[msg.sender][_gameId];
+        Game storage game = games[msg.sender][_gameId];
         require(!isEmptyStrings(move), "Move can't be empty");
 
         if (msg.sender == game.player1.addr) {
@@ -147,7 +131,7 @@ contract RockPaperScissors {
     }
 
     function cancelForSlowMove(uint _gameId) external onlyPlayerOnStatus(GameStatus.MOVES, _gameId) {
-        Game memory game = games[msg.sender][_gameId];
+        Game storage game = games[msg.sender][_gameId];
         require(game.updatedAt + 5 minutes > block.timestamp, 'You cant abort game so fast');
         game.status = GameStatus.CANCELED;
         game.player1.addr.transfer(game.bet);
@@ -155,7 +139,7 @@ contract RockPaperScissors {
     }
 
     function revealSecret(uint _secret, uint _gameId) external onlyPlayerOnStatus(GameStatus.REVEALING, _gameId) {
-        Game memory game = games[msg.sender][_gameId];
+        Game storage game = games[msg.sender][_gameId];
         if (msg.sender == game.player1.addr) {
             require(isCorrectMove(game.player1.move, _secret), "incorrect move");
             game.player1.secret = _secret;
@@ -172,7 +156,7 @@ contract RockPaperScissors {
     }
 
     function forceFinish(uint _gameId) external onlyPlayerOnStatus(GameStatus.REVEALING, _gameId) {
-        Game memory game = games[msg.sender][_gameId];
+        Game storage game = games[msg.sender][_gameId];
         require(game.player1.secret > 0  || game.player2.secret > 0);
         require(game.updatedAt + 1 hours > block.timestamp, 'You cant force game finish so fast');
         game.status = GameStatus.TIMEOUT;
