@@ -75,20 +75,18 @@ contract RockPaperScissors {
         uint gameId = nextGameId;
         nextGameId++;
 
-        Player memory player1 = Player(payable(msg.sender), '', 0);
-        Player memory player2 = Player(_opponent, '', 0);
         Game memory newGame = Game(
             gameId, // id
-            player1,
-            player2,
+            Player(payable(msg.sender), '', 0), // initiator (offer maker)
+            Player(_opponent, '', 0), // opponent
             msg.value, // bet
             GameStatus.OFFER, // status
             block.timestamp, // updatedAt
             block.timestamp // createdAt
         );
 
-        games[player1.addr][gameId] = newGame;
-        games[player2.addr][gameId] = newGame;
+        games[newGame.player1.addr][gameId] = newGame;
+        games[newGame.player2.addr][gameId] = newGame;
     }
 
     function revokeOffer(uint _gameId) external onlyPlayerOnStatus(GameStatus.OFFER, _gameId){
@@ -112,8 +110,7 @@ contract RockPaperScissors {
         game.status = GameStatus.MOVES;
     }
 
-    // do we need `memory` for move?
-    function makeMove(uint _gameId, string memory move) external onlyPlayerOnStatus(GameStatus.MOVES, _gameId) {
+    function makeMove(uint _gameId, string calldata move) external onlyPlayerOnStatus(GameStatus.MOVES, _gameId) {
         Game storage game = games[msg.sender][_gameId];
         require(!isEmptyStrings(move), "Move can't be empty");
 
