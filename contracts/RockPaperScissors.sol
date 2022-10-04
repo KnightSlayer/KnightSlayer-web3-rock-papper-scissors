@@ -51,6 +51,11 @@ contract RockPaperScissors {
         return size > 0;
     }
 
+    function getPlayers(uint _gameId) private view returns (Player storage, Player storage) {
+        Game storage game = games[msg.sender][_gameId];
+        return game.player1.addr == msg.sender ? (game.player1, game.player2) :  (game.player2, game.player1);
+    }
+
     function getMove(uint8 _figure, uint _secret) private pure returns (bytes32) {
         return keccak256(abi.encodePacked(_secret + uint(_figure)));
     }
@@ -165,11 +170,12 @@ contract RockPaperScissors {
 
     function claim(uint _gameId) external onlyPlayerOnStatus(GameStatus.FINISHED, _gameId) {
         Game storage game = games[msg.sender][_gameId];
-        Player storage sender;
-        Player storage opponent;
-        (sender, opponent) = game.player1.addr == msg.sender ? (game.player1, game.player2) :  (game.player2, game.player1);
-        require(sender.isClaimed == false, "Already claimed");
-        // uint8 module = this.getMove(sender.move, sender.secret)
-
+        (Player storage actor, Player storage opponent) = getPlayers(_gameId);
+        require(actor.isClaimed == false, "Already claimed");
+        uint8 module = (getFigure(actor.move, actor.secret) - getFigure(opponent.move, opponent.secret)) % 3;
+        if (module == 0) actor.addr.transfer(game.bet);
+        if (module == 1) actor.addr.transfer(game.bet * 2);
+        if (module == 2) revert();
+        actor.isClaimed = true;
     }
 }
