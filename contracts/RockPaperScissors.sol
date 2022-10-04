@@ -22,7 +22,7 @@ contract RockPaperScissors {
 
     struct Player {
         address payable addr;
-        string move;
+        bytes32 move; // move = hash(figure + secret)
         uint secret;
         bool isClaimed;
     }
@@ -59,27 +59,26 @@ contract RockPaperScissors {
         return isSameStrings(_str, '');
     }
 
-    function getMove(string memory _figure, uint _secret) private pure returns (string memory) {
-        string memory secretAsString = Strings.toString(_secret);
-        string memory fullMove = string.concat(_figure, secretAsString);
-        return string(abi.encodePacked(keccak256(abi.encodePacked(fullMove))));
+    function getMove(uint8 _figure, uint _secret) private pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_secret + uint(_figure)));
     }
 
     function getFigure(bytes32 _move, uint _secret) private pure returns (uint8) {
         uint8[3] memory figures = [rockFigure, paperFigure, scissorsFigure];
         for (uint8 i = 0; i < figures.length; i++) {
-            bytes32 move =  keccak256(abi.encodePacked(_secret + uint(rockFigure)));
+            uint8 figure = figures[i];
+            bytes32 move = getMove(figure, _secret);
             if (_move == move) return rockFigure;
         }
 
         revert("Invalid figure");
     }
 
-    function isCorrectMove(string memory _move, uint _secret) private pure returns (bool) {
-        string memory rockMove = getMove("Rock", _secret);
-        string memory paperMove = getMove("Paper", _secret);
-        string memory scissorsMove = getMove("Scissors", _secret);
-        return isSameStrings(rockMove, _move) || isSameStrings(paperMove, _move) || isSameStrings(scissorsMove, _move);
+    function isCorrectMove(bytes32 _move, uint _secret) private pure returns (bool) {
+        bytes32 rockMove = getMove(rockFigure, _secret);
+        bytes32 paperMove = getMove(paperFigure, _secret);
+        bytes32 scissorsMove = getMove(scissorsFigure, _secret);
+        return rockMove == _move || paperMove == _move || scissorsMove == _move;
     }
 
     function makeOffer(address payable _opponent) external payable noSmartContract {
@@ -123,18 +122,18 @@ contract RockPaperScissors {
         game.status = GameStatus.MOVES;
     }
 
-    function makeMove(uint _gameId, string calldata move) external onlyPlayerOnStatus(GameStatus.MOVES, _gameId) {
+    function makeMove(uint _gameId, bytes32 _move) external onlyPlayerOnStatus(GameStatus.MOVES, _gameId) {
         Game storage game = games[msg.sender][_gameId];
-        require(!isEmptyStrings(move), "Move can't be empty");
+        require(_move != '', "Move can't be empty");
 
         if (msg.sender == game.player1.addr) {
-            game.player1.move = move;
-            if (!isEmptyStrings(game.player2.move)) {
+            game.player1.move = _move;
+            if (game.player2.move != '') {
                 game.status = GameStatus.REVEALING;
             }
         } else {
-            game.player2.move = move;
-            if (!isEmptyStrings(game.player1.move)) {
+            game.player2.move = _move;
+            if (game.player1.move != '') {
                 game.status = GameStatus.REVEALING;
             }
         }
