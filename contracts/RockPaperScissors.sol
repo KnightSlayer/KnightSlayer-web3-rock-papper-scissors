@@ -7,8 +7,6 @@ contract RockPaperScissors {
 
     event Offer(address player1, address player2, uint bet);
 
-    uint nextGameId = 1;
-
     modifier noSmartContract() {
         require(msg.sender != tx.origin);
         _;
@@ -26,6 +24,7 @@ contract RockPaperScissors {
         address payable addr;
         string move;
         uint secret;
+        bool isClaimed;
     }
 
     struct Game {
@@ -38,6 +37,10 @@ contract RockPaperScissors {
         uint createdAt;
     }
 
+    uint8 immutable rockFigure = 0;
+    uint8 immutable paperFigure = 1;
+    uint8 immutable scissorsFigure = 2;
+    uint128 nextGameId = 1;
     // playerAddress -> gameId -> gameState
     mapping (address => mapping(uint => Game)) games;
 
@@ -62,6 +65,16 @@ contract RockPaperScissors {
         return string(abi.encodePacked(keccak256(abi.encodePacked(fullMove))));
     }
 
+    function getFigure(bytes32 _move, uint _secret) private pure returns (uint8) {
+        uint8[3] memory figures = [rockFigure, paperFigure, scissorsFigure];
+        for (uint8 i = 0; i < figures.length; i++) {
+            bytes32 move =  keccak256(abi.encodePacked(_secret + uint(rockFigure)));
+            if (_move == move) return rockFigure;
+        }
+
+        revert("Invalid figure");
+    }
+
     function isCorrectMove(string memory _move, uint _secret) private pure returns (bool) {
         string memory rockMove = getMove("Rock", _secret);
         string memory paperMove = getMove("Paper", _secret);
@@ -77,8 +90,8 @@ contract RockPaperScissors {
 
         Game memory newGame = Game(
             gameId, // id
-            Player(payable(msg.sender), '', 0), // initiator (offer maker)
-            Player(_opponent, '', 0), // opponent
+            Player(payable(msg.sender), '', 0, false), // initiator (offer maker)
+            Player(_opponent, '', 0, false), // opponent
             msg.value, // bet
             GameStatus.OFFER, // status
             block.timestamp, // updatedAt
@@ -157,5 +170,15 @@ contract RockPaperScissors {
         require(game.player1.secret > 0  || game.player2.secret > 0);
         require(game.updatedAt + 1 hours > block.timestamp, 'You cant force game finish so fast');
         game.status = GameStatus.TIMEOUT;
+    }
+
+    function claim(uint _gameId) external onlyPlayerOnStatus(GameStatus.FINISHED, _gameId) {
+        Game storage game = games[msg.sender][_gameId];
+        Player storage sender;
+        Player storage opponent;
+        (sender, opponent) = game.player1.addr == msg.sender ? (game.player1, game.player2) :  (game.player2, game.player1);
+        require(sender.isClaimed == false, "Already claimed");
+        // uint8 module = this.getMove(sender.move, sender.secret)
+
     }
 }
