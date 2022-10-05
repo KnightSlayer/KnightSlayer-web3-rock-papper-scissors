@@ -20,7 +20,7 @@ describe("RockPaperScissors.sol", () => {
     contract = await contractFactory.deploy();
   });
 
-  describe("Offer", () => {
+  describe("makeOffer", () => {
     it("should increment game id", async () => {
       expect(contract.makeOffer(bob.address))
         .to.emit(contract, "GameUpdate")
@@ -65,9 +65,9 @@ describe("RockPaperScissors.sol", () => {
 
     it("should start new game with some bet", async () => {
       const bet = Math.round(Math.random() * 100_000);
-      await contract.makeOffer(bob.address, {
+      await expect(() => contract.makeOffer(bob.address, {
         value: bet,
-      });
+      })).to.changeEtherBalances([contract, alice], [bet, -bet]);
       const game = await contract.games(0);
       expect(game.bet).to.equal(bet);
     });
