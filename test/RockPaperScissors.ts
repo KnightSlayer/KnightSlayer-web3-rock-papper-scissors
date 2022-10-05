@@ -6,6 +6,7 @@ import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 
 const emptyByte32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
 enum statuses { OFFER, REVOKED, DECLINED, MOVES, CANCELED, REVEALING, FINISHED, TIMEOUT }
+const getRandomBet = () => Math.round(Math.random() * 100_000);
 
 describe("RockPaperScissors.sol", () => {
   let contractFactory: ContractFactory;
@@ -64,12 +65,28 @@ describe("RockPaperScissors.sol", () => {
     });
 
     it("should start new game with some bet", async () => {
-      const bet = Math.round(Math.random() * 100_000);
+      const bet = getRandomBet();
+      const gameId = 0;
       await expect(() => contract.makeOffer(bob.address, {
         value: bet,
       })).to.changeEtherBalances([contract, alice], [bet, -bet]);
-      const game = await contract.games(0);
+      const game = await contract.games(gameId);
       expect(game.bet).to.equal(bet);
     });
+  });
+
+  describe("revokeOffer",  () => {
+    it("should revoke offer", async () => {
+      const bet = getRandomBet();
+      const gameId = 0;
+      await contract.makeOffer(bob.address, {
+        value: bet,
+      })
+      await expect(() => contract.revokeOffer(gameId))
+        .to.changeEtherBalances([contract, alice], [-bet, bet]);
+
+      const game = await contract.games(gameId);
+      expect(game.status).to.equal(statuses.REVOKED);
+    })
   });
 });
