@@ -4,7 +4,7 @@ import { Contract, ContractFactory } from "ethers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 
-const emptyByte32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
+const emptyByte32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
 enum statuses { OFFER, REVOKED, DECLINED, MOVES, CANCELED, REVEALING, FINISHED, TIMEOUT }
 const getRandomBet = () => Math.round(Math.random() * 100_000);
 
@@ -87,6 +87,22 @@ describe("RockPaperScissors.sol", () => {
 
       const game = await contract.games(gameId);
       expect(game.status).to.equal(statuses.REVOKED);
+    })
+
+    it("only offer-maker can revoke offer", async () => {
+      const bet = getRandomBet();
+      const gameId = 0;
+      await contract.makeOffer(bob.address, {
+        value: bet,
+      })
+
+      await expect(
+        contract.connect(bob).revokeOffer(gameId)
+      ).to.be.revertedWith("Only offer maker can revoke the offer");
+
+      await expect(
+        contract.connect(stranger).revokeOffer(gameId)
+      ).to.be.revertedWith("Only players can interact with game");
     })
   });
 });

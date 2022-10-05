@@ -13,7 +13,7 @@ contract RockPaperScissors {
     modifier onlyPlayerOnStatus(GameStatus _status, uint _gameId) {
         Game storage game = games[_gameId];
         require(game.status == _status);
-        require(msg.sender == game.player1.addr || msg.sender == game.player2.addr, "Only players can make a move");
+        require(msg.sender == game.player1.addr || msg.sender == game.player2.addr, "Only players can interact with game");
         _;
         game.updatedAt = block.timestamp;
         emit GameUpdate(_gameId, game);
