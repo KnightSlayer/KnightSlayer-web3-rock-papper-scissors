@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { Contract, ContractFactory } from "ethers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
+import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 
 describe("RockPaperScissors.sol", () => {
   let contractFactory: ContractFactory;
@@ -9,29 +10,37 @@ describe("RockPaperScissors.sol", () => {
   let alice: SignerWithAddress;
   let bob: SignerWithAddress;
   let stranger: SignerWithAddress;
-  let aliceAddress: string;
-  let bobAddress: string;
-  let strangerAddress: string;
 
   beforeEach(async () => {
     [alice, bob, stranger] = await ethers.getSigners();
     contractFactory = await ethers.getContractFactory("RockPaperScissors");
     contract = await contractFactory.deploy();
-    aliceAddress = await alice.getAddress();
-    bobAddress = await bob.getAddress();
-    strangerAddress = await stranger.getAddress();
   });
 
-  describe("Correct setup", () => {
-    it("should start new game with 0 bet", async () => {
-      const res = await contract.makeOffer(bob.getAddress());
-      const [id] = ethers.utils.defaultAbiCoder.decode(['uint'], ethers.utils.hexDataSlice(res.data, 4));
-      console.log('id', id);
-      expect(id).to.equal(0);
+  describe("Offer", () => {
+    it("should increment game id", async () => {
+      expect(contract.makeOffer(bob.address))
+        .to.emit(contract, "GameUpdate")
+        .withArgs(0, anyValue);
 
-      const game = await contract.games(id);
-      console.log('game', game);
-      expect(1).to.equal(1);
+      expect(contract.makeOffer(bob.address))
+        .to.emit(contract, "GameUpdate")
+        .withArgs(1, anyValue);
+
+      expect(contract.makeOffer(bob.address))
+        .to.emit(contract, "GameUpdate")
+        .withArgs(2, anyValue);
+
+      expect(contract.makeOffer(bob.address))
+        .to.emit(contract, "GameUpdate")
+        .withArgs(3, anyValue);
+
+    })
+
+    it("should start new game with 0 bet", async () => {
+      await contract.makeOffer(bob.address)
+      const game = await contract.games(0);
+      expect(game.bet).to.equal(0);
     });
   });
 });

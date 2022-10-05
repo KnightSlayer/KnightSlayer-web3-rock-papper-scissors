@@ -76,7 +76,7 @@ contract RockPaperScissors {
         return rockMove == _move || paperMove == _move || scissorsMove == _move;
     }
 
-    function makeOffer(address payable _opponent) external payable noSmartContract returns(uint) {
+    function makeOffer(address payable _opponent) external payable noSmartContract {
         require(!isContract(_opponent), "You can't challenge smart contract address");
         uint newGameId = games.length;
 
@@ -90,7 +90,6 @@ contract RockPaperScissors {
         ));
 
         emit GameUpdate(newGameId, games[newGameId]);
-        return newGameId;
     }
 
     function revokeOffer(uint _gameId) external onlyPlayerOnStatus(GameStatus.OFFER, _gameId){
