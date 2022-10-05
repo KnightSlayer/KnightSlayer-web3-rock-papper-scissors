@@ -81,13 +81,13 @@ contract RockPaperScissors {
         uint newGameId = games.length;
 
         games.push(Game(
-                Player(payable(msg.sender), "", 0, false), // initiator (offer maker)
-                Player(_opponent, "", 0, false), // opponent
-                msg.value, // bet
-                GameStatus.OFFER, // status
-                block.timestamp, // updatedAt
-                block.timestamp // createdAt
-            ));
+            Player(payable(msg.sender), "", 0, false), // initiator (offer maker)
+            Player(_opponent, "", 0, false), // opponent
+            msg.value, // bet
+            GameStatus.OFFER, // status
+            block.timestamp, // updatedAt
+            block.timestamp // createdAt
+        ));
 
         emit GameUpdate(newGameId, games[newGameId]);
         return newGameId;
