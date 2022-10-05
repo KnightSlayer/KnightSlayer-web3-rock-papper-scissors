@@ -5,8 +5,6 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 contract RockPaperScissors {
     enum GameStatus { OFFER, REVOKED, DECLINED, MOVES, CANCELED, REVEALING, FINISHED, TIMEOUT }
 
-    event Offer(address player1, address player2, uint bet);
-
     modifier noSmartContract() {
         require(msg.sender != tx.origin);
         _;
@@ -18,6 +16,7 @@ contract RockPaperScissors {
         require(msg.sender == game.player1.addr || msg.sender == game.player2.addr, "Only players can make a move");
         _;
         game.updatedAt = block.timestamp;
+        emit GameUpdate(game);
     }
 
     struct Player {
@@ -37,6 +36,8 @@ contract RockPaperScissors {
         uint createdAt;
     }
 
+    event GameUpdate(Game indexed game);
+
     uint8 immutable rockFigure = 0;
     uint8 immutable paperFigure = 1;
     uint8 immutable scissorsFigure = 2;
@@ -51,7 +52,7 @@ contract RockPaperScissors {
         return size > 0;
     }
 
-    function getPlayers(uint _gameId) private view returns (Player storage, Player storage) {
+    function getPlayers(uint _gameId) private view returns (Player storage actor, Player storage opponent) {
         Game storage game = games[msg.sender][_gameId];
         return game.player1.addr == msg.sender ? (game.player1, game.player2) :  (game.player2, game.player1);
     }
@@ -65,7 +66,7 @@ contract RockPaperScissors {
         for (uint8 i = 0; i < figures.length; i++) {
             uint8 figure = figures[i];
             bytes32 move = getMove(figure, _secret);
-            if (_move == move) return rockFigure;
+            if (_move == move) return figure;
         }
 
         revert("Invalid figure");
@@ -96,6 +97,7 @@ contract RockPaperScissors {
 
         games[newGame.player1.addr][gameId] = newGame;
         games[newGame.player2.addr][gameId] = newGame;
+        emit GameUpdate(newGame);
     }
 
     function revokeOffer(uint _gameId) external onlyPlayerOnStatus(GameStatus.OFFER, _gameId){
@@ -120,19 +122,13 @@ contract RockPaperScissors {
     }
 
     function makeMove(uint _gameId, bytes32 _move) external onlyPlayerOnStatus(GameStatus.MOVES, _gameId) {
-        Game storage game = games[msg.sender][_gameId];
         require(_move != "", "Move can't be empty");
+        Game storage game = games[msg.sender][_gameId];
+        (Player storage actor, Player storage opponent) = getPlayers(_gameId);
 
-        if (msg.sender == game.player1.addr) {
-            game.player1.move = _move;
-            if (game.player2.move != "") {
-                game.status = GameStatus.REVEALING;
-            }
-        } else {
-            game.player2.move = _move;
-            if (game.player1.move != "") {
-                game.status = GameStatus.REVEALING;
-            }
+        actor.move = _move;
+        if (opponent.move != "") {
+            game.status = GameStatus.REVEALING;
         }
     }
 
@@ -145,19 +141,12 @@ contract RockPaperScissors {
     }
 
     function revealSecret(uint _secret, uint _gameId) external onlyPlayerOnStatus(GameStatus.REVEALING, _gameId) {
-        Game storage game = games[msg.sender][_gameId];
-        if (msg.sender == game.player1.addr) {
-            require(isCorrectMove(game.player1.move, _secret), "incorrect move");
-            game.player1.secret = _secret;
-            if (game.player2.secret > 0) {
-                game.status = GameStatus.FINISHED;
-            }
-        } else {
-            require(isCorrectMove(game.player2.move, _secret), "incorrect move");
-            game.player2.secret = _secret;
-            if (game.player1.secret > 0) {
-                game.status = GameStatus.FINISHED;
-            }
+        (Player storage actor, Player storage opponent) = getPlayers(_gameId);
+        require(isCorrectMove(actor.move, _secret), "incorrect move");
+        actor.secret = _secret;
+        if (opponent.secret > 0) {
+            Game storage game = games[msg.sender][_gameId];
+            game.status = GameStatus.FINISHED;
         }
     }
 
