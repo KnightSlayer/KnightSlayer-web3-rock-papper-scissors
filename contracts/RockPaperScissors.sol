@@ -6,17 +6,17 @@ contract RockPaperScissors {
     enum GameStatus { OFFER, REVOKED, DECLINED, MOVES, CANCELED, REVEALING, FINISHED, TIMEOUT }
 
     modifier noSmartContract() {
-        require(msg.sender != tx.origin);
+        require(msg.sender == tx.origin);
         _;
     }
 
     modifier onlyPlayerOnStatus(GameStatus _status, uint _gameId) {
-        Game storage game = games[msg.sender][_gameId];
+        Game storage game = games[_gameId];
         require(game.status == _status);
         require(msg.sender == game.player1.addr || msg.sender == game.player2.addr, "Only players can make a move");
         _;
         game.updatedAt = block.timestamp;
-        emit GameUpdate(game);
+        emit GameUpdate(_gameId, game);
     }
 
     struct Player {
@@ -27,7 +27,6 @@ contract RockPaperScissors {
     }
 
     struct Game {
-        uint id;
         Player player1; // initiator (offer maker)
         Player player2;
         uint bet;
@@ -36,14 +35,12 @@ contract RockPaperScissors {
         uint createdAt;
     }
 
-    event GameUpdate(Game indexed game);
+    event GameUpdate(uint indexed gameId, Game indexed game);
 
     uint8 immutable rockFigure = 0;
     uint8 immutable paperFigure = 1;
     uint8 immutable scissorsFigure = 2;
-    uint128 nextGameId = 1;
-    // playerAddress -> gameId -> gameState
-    mapping (address => mapping(uint => Game)) games;
+    Game[] public games;
 
     // https://stackoverflow.com/a/40939341
     function isContract(address _address) private view returns (bool) {
@@ -53,7 +50,7 @@ contract RockPaperScissors {
     }
 
     function getPlayers(uint _gameId) private view returns (Player storage actor, Player storage opponent) {
-        Game storage game = games[msg.sender][_gameId];
+        Game storage game = games[_gameId];
         return game.player1.addr == msg.sender ? (game.player1, game.player2) :  (game.player2, game.player1);
     }
 
@@ -79,43 +76,39 @@ contract RockPaperScissors {
         return rockMove == _move || paperMove == _move || scissorsMove == _move;
     }
 
-    function makeOffer(address payable _opponent) external payable noSmartContract {
-        require(nextGameId != 0, "This contract reached maximum games count. Fork this contract for new games"); // overflow happen
+    function makeOffer(address payable _opponent) external payable noSmartContract returns(uint) {
         require(!isContract(_opponent), "You can't challenge smart contract address");
-        uint gameId = nextGameId;
-        nextGameId++;
+        uint newGameId = games.length;
 
-        Game memory newGame = Game(
-            gameId, // id
-            Player(payable(msg.sender), "", 0, false), // initiator (offer maker)
-            Player(_opponent, "", 0, false), // opponent
-            msg.value, // bet
-            GameStatus.OFFER, // status
-            block.timestamp, // updatedAt
-            block.timestamp // createdAt
-        );
+        games.push(Game(
+                Player(payable(msg.sender), "", 0, false), // initiator (offer maker)
+                Player(_opponent, "", 0, false), // opponent
+                msg.value, // bet
+                GameStatus.OFFER, // status
+                block.timestamp, // updatedAt
+                block.timestamp // createdAt
+            ));
 
-        games[newGame.player1.addr][gameId] = newGame;
-        games[newGame.player2.addr][gameId] = newGame;
-        emit GameUpdate(newGame);
+        emit GameUpdate(newGameId, games[newGameId]);
+        return newGameId;
     }
 
     function revokeOffer(uint _gameId) external onlyPlayerOnStatus(GameStatus.OFFER, _gameId){
-        Game storage game = games[msg.sender][_gameId];
+        Game storage game = games[_gameId];
         require(game.player1.addr == msg.sender, "Only offer maker can revoke the offer");
         game.status = GameStatus.REVOKED;
         game.player1.addr.transfer(game.bet);
     }
 
     function declineOffer(uint _gameId) external onlyPlayerOnStatus(GameStatus.OFFER, _gameId) {
-        Game storage game = games[msg.sender][_gameId];
+        Game storage game = games[_gameId];
         require(game.player2.addr == msg.sender, "Only opponent can decline the offer");
         game.status = GameStatus.DECLINED;
         game.player1.addr.transfer(game.bet);
     }
 
     function acceptOffer(uint _gameId) external payable onlyPlayerOnStatus(GameStatus.OFFER, _gameId) {
-        Game storage game = games[msg.sender][_gameId];
+        Game storage game = games[_gameId];
         require(game.player2.addr == msg.sender, "Only opponent can accept the offer");
         require(game.bet == msg.value, "You should provide the same amount of ether");
         game.status = GameStatus.MOVES;
@@ -123,7 +116,7 @@ contract RockPaperScissors {
 
     function makeMove(uint _gameId, bytes32 _move) external onlyPlayerOnStatus(GameStatus.MOVES, _gameId) {
         require(_move != "", "Move can't be empty");
-        Game storage game = games[msg.sender][_gameId];
+        Game storage game = games[_gameId];
         (Player storage actor, Player storage opponent) = getPlayers(_gameId);
 
         actor.move = _move;
@@ -133,7 +126,7 @@ contract RockPaperScissors {
     }
 
     function cancelForSlowMove(uint _gameId) external onlyPlayerOnStatus(GameStatus.MOVES, _gameId) {
-        Game storage game = games[msg.sender][_gameId];
+        Game storage game = games[_gameId];
         require(game.updatedAt + 5 minutes > block.timestamp, "You cant abort game so fast");
         game.status = GameStatus.CANCELED;
         game.player1.addr.transfer(game.bet);
@@ -145,20 +138,20 @@ contract RockPaperScissors {
         require(isCorrectMove(actor.move, _secret), "incorrect move");
         actor.secret = _secret;
         if (opponent.secret > 0) {
-            Game storage game = games[msg.sender][_gameId];
+            Game storage game = games[_gameId];
             game.status = GameStatus.FINISHED;
         }
     }
 
     function forceFinish(uint _gameId) external onlyPlayerOnStatus(GameStatus.REVEALING, _gameId) {
-        Game storage game = games[msg.sender][_gameId];
+        Game storage game = games[_gameId];
         require(game.player1.secret > 0  || game.player2.secret > 0);
         require(game.updatedAt + 1 hours > block.timestamp, "You cant force game finish so fast");
         game.status = GameStatus.TIMEOUT;
     }
 
     function claim(uint _gameId) external onlyPlayerOnStatus(GameStatus.FINISHED, _gameId) {
-        Game storage game = games[msg.sender][_gameId];
+        Game storage game = games[_gameId];
         (Player storage actor, Player storage opponent) = getPlayers(_gameId);
         require(actor.isClaimed == false, "Already claimed");
         uint8 module = (getFigure(actor.move, actor.secret) - getFigure(opponent.move, opponent.secret)) % 3;
