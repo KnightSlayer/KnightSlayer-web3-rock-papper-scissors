@@ -42,5 +42,14 @@ describe("RockPaperScissors.sol", () => {
       const game = await contract.games(0);
       expect(game.bet).to.equal(0);
     });
+
+    it("should start new game with some bet", async () => {
+      const bet = Math.round(Math.random() * 100_000);
+      await contract.makeOffer(bob.address, {
+        value: bet,
+      });
+      const game = await contract.games(0);
+      expect(game.bet).to.equal(bet);
+    });
   });
 });
