@@ -161,7 +161,7 @@ describe("RockPaperScissors.sol", () => {
 
     })
 
-    it("can revoke only offer status", async () => {
+    it("can decline only offer status", async () => {
       await contract.makeOffer(bob.address)
       await contract.connect(bob).declineOffer(0);
 
