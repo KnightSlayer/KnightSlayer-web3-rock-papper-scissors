@@ -170,4 +170,60 @@ describe("RockPaperScissors.sol", () => {
       ).to.be.revertedWith("Wrong action for current game status");
     })
   });
+
+  describe("acceptOffer",  () => {
+    it("should accept offer", async () => {
+      const bet = getRandomBet();
+      const gameId = 0;
+      await contract.makeOffer(bob.address, {
+        value: bet,
+      })
+      await expect(() => contract.connect(bob).acceptOffer(gameId, {value: bet}))
+        .to.changeEtherBalances([contract, bob], [bet, -bet]);
+
+      const game = await contract.games(gameId);
+      expect(game.status).to.equal(statuses.MOVES);
+    })
+
+    it("should provide value equal to bet", async () => {
+      const bet = getRandomBet() + 2;
+      const gameId = 0;
+      await contract.makeOffer(bob.address, {
+        value: bet,
+      })
+
+      await expect(contract.connect(bob).acceptOffer(gameId, {value: Math.round(bet / 2)}))
+        .to.be.revertedWith("You should provide the same amount of ether");
+    })
+
+    it("should emit GameUpdate", async () => {
+      await contract.makeOffer(bob.address);
+      const gameId = 0;
+      expect(contract.connect(bob).acceptOffer(gameId))
+        .to.emit(contract, "GameUpdate")
+        .withArgs(0, anyValue);
+
+    })
+
+    it("can accept only offer status", async () => {
+      await contract.makeOffer(bob.address);
+      const gameId = 0;
+      await contract.connect(bob).acceptOffer(gameId);
+
+      await expect(
+        contract.acceptOffer(gameId)
+      ).to.be.revertedWith("Wrong action for current game status");
+    })
+
+    it("only opponent can accept offer", async () => {
+      await contract.makeOffer(bob.address);
+      const gameId = 0;
+      await expect(
+        contract.acceptOffer(gameId)
+      ).to.be.revertedWith("Only opponent can accept the offer");
+      await expect(
+        contract.connect(stranger).acceptOffer(gameId)
+      ).to.be.revertedWith("Only players can interact with game");
+    })
+  });
 });
