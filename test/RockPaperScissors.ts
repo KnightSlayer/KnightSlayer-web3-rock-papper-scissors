@@ -106,7 +106,8 @@ describe("RockPaperScissors.sol", () => {
     })
 
     it("should emit GameUpdate", async () => {
-      expect(contract.makeOffer(bob.address))
+      await contract.makeOffer(bob.address);
+      expect(contract.revokeOffer())
         .to.emit(contract, "GameUpdate")
         .withArgs(0, anyValue);
 
@@ -118,6 +119,54 @@ describe("RockPaperScissors.sol", () => {
 
       await expect(
         contract.revokeOffer(0)
+      ).to.be.revertedWith("Wrong action for current game status");
+    })
+  });
+
+  describe("declineOffer",  () => {
+    it("should decline offer", async () => {
+      const bet = getRandomBet();
+      const gameId = 0;
+      await contract.makeOffer(bob.address, {
+        value: bet,
+      })
+      await expect(() => contract.connect(bob).declineOffer(gameId))
+        .to.changeEtherBalances([contract, alice], [-bet, bet]);
+
+      const game = await contract.games(gameId);
+      expect(game.status).to.equal(statuses.DECLINED);
+    })
+
+    it("only opponent can decline offer", async () => {
+      const bet = getRandomBet();
+      const gameId = 0;
+      await contract.makeOffer(bob.address, {
+        value: bet,
+      })
+
+      await expect(
+        contract.declineOffer(gameId)
+      ).to.be.revertedWith("Only opponent can decline the offer");
+
+      await expect(
+        contract.connect(stranger).declineOffer(gameId)
+      ).to.be.revertedWith("Only players can interact with game");
+    })
+
+    it("should emit GameUpdate", async () => {
+      await contract.makeOffer(bob.address);
+      expect(contract.connect(bob).declineOffer())
+        .to.emit(contract, "GameUpdate")
+        .withArgs(0, anyValue);
+
+    })
+
+    it("can revoke only offer status", async () => {
+      await contract.makeOffer(bob.address)
+      await contract.connect(bob).declineOffer(0);
+
+      await expect(
+        contract.declineOffer(0)
       ).to.be.revertedWith("Wrong action for current game status");
     })
   });
