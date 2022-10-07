@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.17;
 
-//import "hardhat/console.sol";
+import "hardhat/console.sol";
 
 contract RockPaperScissors {
     enum GameStatus { OFFER, REVOKED, DECLINED, MOVES, CANCELED, REVEALING, FINISHED, TIMEOUT }
@@ -115,12 +115,13 @@ contract RockPaperScissors {
     }
 
     function makeMove(uint _gameId, bytes32 _move) external onlyPlayerOnStatus(GameStatus.MOVES, _gameId) {
-        require(_move != "", "Move can't be empty");
+        bytes32 empty;
+        require(_move != empty, "Move can't be empty");
         Game storage game = games[_gameId];
         (Player storage actor, Player storage opponent) = getPlayers(_gameId);
 
         actor.move = _move;
-        if (opponent.move != "") {
+        if (opponent.move != empty) {
             game.status = GameStatus.REVEALING;
         }
     }

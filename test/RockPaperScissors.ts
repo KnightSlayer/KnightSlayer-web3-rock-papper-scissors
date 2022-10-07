@@ -5,8 +5,15 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 
 const emptyByte32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
-enum statuses { OFFER, REVOKED, DECLINED, MOVES, CANCELED, REVEALING, FINISHED, TIMEOUT }
-const getRandomBet = () => Math.round(Math.random() * 100_000);
+enum Statuses { OFFER, REVOKED, DECLINED, MOVES, CANCELED, REVEALING, FINISHED, TIMEOUT };
+enum Figures { ROCK, PAPER, SCISSORS};
+const getRandomInt = () => Math.round(Math.random() * 1_000_000_000);
+const getMove = (figure: Figures, secret: number) => {
+  const asHex = ethers.utils.hexlify(figure + secret);
+  const bitesLike = ethers.utils.hexZeroPad(asHex, 32)
+
+  return ethers.utils.keccak256(bitesLike)
+}
 
 describe("RockPaperScissors.sol", () => {
   let contractFactory: ContractFactory;
@@ -55,7 +62,7 @@ describe("RockPaperScissors.sol", () => {
       expect(game.player2.secret).to.equal(0);
       expect(game.player2.isClaimed).to.equal(false);
 
-      expect(game.status).to.equal(statuses.OFFER);
+      expect(game.status).to.equal(Statuses.OFFER);
     })
 
     it("should start new game with 0 bet", async () => {
@@ -65,7 +72,7 @@ describe("RockPaperScissors.sol", () => {
     });
 
     it("should start new game with some bet", async () => {
-      const bet = getRandomBet();
+      const bet = getRandomInt();
       const gameId = 0;
       await expect(() => contract.makeOffer(bob.address, {
         value: bet,
@@ -77,7 +84,7 @@ describe("RockPaperScissors.sol", () => {
 
   describe("revokeOffer",  () => {
     it("should revoke offer", async () => {
-      const bet = getRandomBet();
+      const bet = getRandomInt();
       const gameId = 0;
       await contract.makeOffer(bob.address, {
         value: bet,
@@ -86,11 +93,11 @@ describe("RockPaperScissors.sol", () => {
         .to.changeEtherBalances([contract, alice], [-bet, bet]);
 
       const game = await contract.games(gameId);
-      expect(game.status).to.equal(statuses.REVOKED);
+      expect(game.status).to.equal(Statuses.REVOKED);
     })
 
     it("only offer-maker can revoke offer", async () => {
-      const bet = getRandomBet();
+      const bet = getRandomInt();
       const gameId = 0;
       await contract.makeOffer(bob.address, {
         value: bet,
@@ -125,7 +132,7 @@ describe("RockPaperScissors.sol", () => {
 
   describe("declineOffer",  () => {
     it("should decline offer", async () => {
-      const bet = getRandomBet();
+      const bet = getRandomInt();
       const gameId = 0;
       await contract.makeOffer(bob.address, {
         value: bet,
@@ -134,11 +141,11 @@ describe("RockPaperScissors.sol", () => {
         .to.changeEtherBalances([contract, alice], [-bet, bet]);
 
       const game = await contract.games(gameId);
-      expect(game.status).to.equal(statuses.DECLINED);
+      expect(game.status).to.equal(Statuses.DECLINED);
     })
 
     it("only opponent can decline offer", async () => {
-      const bet = getRandomBet();
+      const bet = getRandomInt();
       const gameId = 0;
       await contract.makeOffer(bob.address, {
         value: bet,
@@ -173,7 +180,7 @@ describe("RockPaperScissors.sol", () => {
 
   describe("acceptOffer",  () => {
     it("should accept offer", async () => {
-      const bet = getRandomBet();
+      const bet = getRandomInt();
       const gameId = 0;
       await contract.makeOffer(bob.address, {
         value: bet,
@@ -182,11 +189,11 @@ describe("RockPaperScissors.sol", () => {
         .to.changeEtherBalances([contract, bob], [bet, -bet]);
 
       const game = await contract.games(gameId);
-      expect(game.status).to.equal(statuses.MOVES);
+      expect(game.status).to.equal(Statuses.MOVES);
     })
 
     it("should provide value equal to bet", async () => {
-      const bet = getRandomBet() + 2;
+      const bet = getRandomInt() + 2;
       const gameId = 0;
       await contract.makeOffer(bob.address, {
         value: bet,
@@ -226,4 +233,56 @@ describe("RockPaperScissors.sol", () => {
       ).to.be.revertedWith("Only players can interact with game");
     })
   });
+
+  describe("makeMove", () => {
+    const createGame = async () => {
+      const bet = getRandomInt();
+      const gameId = 0;
+      await contract.makeOffer(bob.address, {value: bet});
+      await contract.connect(bob).acceptOffer(gameId, {value: bet});
+      contract.connect(alice);
+
+      return { gameId, bet }
+    }
+
+    it("should change status when bot players made a move", async () => {
+      const { gameId } = await createGame();
+      const aliceMove = getMove(Figures.ROCK, getRandomInt());
+      await contract.makeMove(gameId, aliceMove);
+      let game = await contract.games(gameId);
+      expect(game.status).to.equal(Statuses.MOVES);
+      const bobMove = getMove(Figures.ROCK, getRandomInt());
+      await contract.connect(bob).makeMove(gameId, bobMove);
+      game = await contract.games(gameId);
+      expect(game.status).to.equal(Statuses.REVEALING);
+      expect(game.player1.move).to.equal(aliceMove);
+      expect(game.player2.move).to.equal(bobMove);
+    })
+
+    it("player can change his move", async () => {
+      const { gameId } = await createGame();
+      await contract.makeMove(gameId, getMove(Figures.ROCK, getRandomInt()));
+      const newMove = getMove(Figures.SCISSORS, getRandomInt());
+      await contract.makeMove(gameId, newMove);
+      const game = await contract.games(gameId);
+      expect(game.player1.move).to.equal(newMove);
+      expect(game.status).to.equal(Statuses.MOVES);
+    });
+
+    it("only players can make move", async () => {
+      const { gameId } = await createGame();
+      await expect(
+        contract.connect(stranger).makeMove(gameId, getMove(Figures.ROCK, getRandomInt()))
+      ).to.be.revertedWith("Only players can interact with game");
+    });
+
+    it("can make move only on move status", async () => {
+      await contract.makeOffer(bob.address);
+      const gameId = 0;
+
+      await expect(
+        contract.makeMove(gameId, getMove(Figures.ROCK, getRandomInt()))
+      ).to.be.revertedWith("Wrong action for current game status");
+    })
+  })
 });
