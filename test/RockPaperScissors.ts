@@ -104,5 +104,21 @@ describe("RockPaperScissors.sol", () => {
         contract.connect(stranger).revokeOffer(gameId)
       ).to.be.revertedWith("Only players can interact with game");
     })
+
+    it("should emit GameUpdate", async () => {
+      expect(contract.makeOffer(bob.address))
+        .to.emit(contract, "GameUpdate")
+        .withArgs(0, anyValue);
+
+    })
+
+    it("can revoke only offer status", async () => {
+      await contract.makeOffer(bob.address)
+      await contract.revokeOffer(0);
+
+      await expect(
+        contract.revokeOffer(0)
+      ).to.be.revertedWith("Wrong action for current game status");
+    })
   });
 });
